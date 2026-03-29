@@ -32,12 +32,24 @@ function tabBtn(
   )
 }
 
+function paletteShortcutLabel(): string {
+  if (typeof navigator === 'undefined') return '⌘⇧K'
+  const p = navigator.platform ?? ''
+  const ua = navigator.userAgent ?? ''
+  const apple =
+    /Mac|iPhone|iPad|iPod/.test(p) ||
+    ua.includes('Mac OS') ||
+    p === 'iPhone'
+  return apple ? '⌘⇧K' : 'Ctrl+Shift+K'
+}
+
 export function PopupHeader({
   promptsUsed,
   minutesSaved,
   popupTab,
   onTabChange,
 }: Props) {
+  const shortcut = paletteShortcutLabel()
   return (
     <header className="border-b border-zinc-800/80 bg-bolt-ink/90 px-5 py-4 backdrop-blur-md">
       <h1 className="font-display text-4xl font-extrabold leading-none tracking-tight">
@@ -80,7 +92,7 @@ export function PopupHeader({
       <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-2">
         <span className="text-sm font-medium text-zinc-400">Press</span>
         <kbd className="inline-flex min-h-[2.25rem] min-w-[2.75rem] items-center justify-center rounded-xl border-2 border-fuchsia-400/70 bg-zinc-950 px-3 py-2 font-mono text-base font-bold leading-none text-fuchsia-200 shadow-[0_0_20px_rgba(232,121,249,0.45),0_2px_0_rgba(0,0,0,0.4)_inset]">
-          ⌘⇧K
+          {shortcut}
         </kbd>
         <span className="text-sm leading-snug text-zinc-400">
           on any page to open the palette.

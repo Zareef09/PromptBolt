@@ -26,10 +26,12 @@ export function hostnameContextTokens(hostname: string): string[] {
   const aliases: Record<string, string[]> = {
     'openai.com': ['openai', 'chatgpt', 'gpt'],
     'chatgpt.com': ['chatgpt', 'openai', 'gpt'],
-    'linkedin.com': ['linkedin'],
-    'google.com': ['google', 'gmail'],
-    'mail.google.com': ['gmail', 'google', 'mail'],
     'chat.openai.com': ['chatgpt', 'openai', 'gpt'],
+    'linkedin.com': ['linkedin'],
+    'google.com': ['google', 'gmail', 'gemini'],
+    'mail.google.com': ['gmail', 'google', 'mail'],
+    'gemini.google.com': ['gemini', 'google', 'bard'],
+    'aistudio.google.com': ['google', 'gemini', 'aistudio'],
   }
 
   for (const a of aliases[host] ?? []) keys.add(normalizeToken(a))

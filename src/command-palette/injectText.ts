@@ -1,19 +1,40 @@
 /**
  * @fileoverview High-compatibility text insertion for extension content scripts.
  * Handles native inputs, textareas, and contenteditable surfaces used by Gmail,
- * ChatGPT, LinkedIn, and similar apps, then dispatches bubbling lifecycle events
- * so React/Vue/Prose-style state layers observe the edit.
+ * Gemini, ChatGPT, LinkedIn, and similar apps (including focus inside open shadow
+ * roots), then dispatches bubbling lifecycle events so React / ProseMirror layers
+ * observe the edit.
  */
 
 /** Element that had focus before the palette opened (may be outside our shadow root). */
 let focusSnapshot: Element | null = null
 
 /**
- * Remembers `document.activeElement` so we can restore focus after the palette closes.
+ * Walks open shadow roots so the real focused field is used (ChatGPT / Gemini / ProseMirror UIs).
+ */
+function getDeepActiveElement(): Element | null {
+  let root: Document | ShadowRoot = document
+  let last: Element | null = null
+  for (let i = 0; i < 32; i++) {
+    const active: Element | null = root.activeElement
+    if (!active) return last
+    last = active
+    const sr: ShadowRoot | null = active.shadowRoot
+    if (sr) {
+      root = sr
+      continue
+    }
+    return active
+  }
+  return last
+}
+
+/**
+ * Remembers the focused control (including inside shadow DOM) so we can restore and inject after the palette closes.
  */
 export function captureTargetElement(): void {
   try {
-    focusSnapshot = document.activeElement
+    focusSnapshot = getDeepActiveElement()
   } catch {
     focusSnapshot = null
   }
@@ -151,7 +172,7 @@ export function injectTextIntoEditableTarget(text: string): InjectResult {
     const preferred =
       focusSnapshot && focusSnapshot.isConnected
         ? focusSnapshot
-        : document.activeElement
+        : getDeepActiveElement()
 
     const el = preferred
     if (!el) {

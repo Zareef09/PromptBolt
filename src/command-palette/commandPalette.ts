@@ -414,42 +414,6 @@ function paintList(): void {
   updatePreviewPane()
 }
 
-const INJECT_CHECK_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7" /></svg>`
-
-/**
- * Brief glass success overlay inside the shadow root before teardown.
- *
- * @param onComplete - Called after the glow/check animation (e.g. {@link closePalette})
- */
-function flashInjectionSuccess(onComplete: () => void): void {
-  if (!shadow) {
-    onComplete()
-    return
-  }
-  const panel = shadow.querySelector('[data-panel]')
-  const mount = panel ?? shadow
-  const flash = document.createElement('div')
-  flash.className = 'inject-flash'
-  flash.setAttribute('role', 'presentation')
-  flash.innerHTML = `
-    <div class="inject-flash__inner">
-      <div class="inject-flash__check">${INJECT_CHECK_SVG}</div>
-      <span class="inject-flash__label">Inserted</span>
-    </div>
-  `
-  mount.appendChild(flash)
-  requestAnimationFrame(() => {
-    flash.classList.add('inject-flash--on')
-  })
-  window.setTimeout(() => {
-    flash.classList.remove('inject-flash--on')
-    window.setTimeout(() => {
-      flash.remove()
-      onComplete()
-    }, 280)
-  }, 520)
-}
-
 /**
  * Updates the right-hand preview column for the highlighted row.
  */
@@ -513,7 +477,7 @@ function confirmSelectedPrompt(): void {
     return
   }
   touchPromptLastUsed(p.id)
-  flashInjectionSuccess(() => closePalette())
+  closePalette()
 }
 
 /**
@@ -571,7 +535,7 @@ function mountVariableMode(prompt: Prompt, placeholderLabels: string[]): void {
       return
     }
     touchPromptLastUsed(pendingPrompt.id)
-    flashInjectionSuccess(() => closePalette())
+    closePalette()
   }
 
   shadow.querySelector('[data-insert]')?.addEventListener('click', submit)
@@ -761,10 +725,9 @@ export function initCommandPalette(): void {
       (e) => {
         try {
           if (
-            e.metaKey &&
+            (e.metaKey || e.ctrlKey) &&
             e.shiftKey &&
             !e.altKey &&
-            !e.ctrlKey &&
             (e.key === 'k' || e.key === 'K')
           ) {
             e.preventDefault()

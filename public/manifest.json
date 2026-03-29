@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "PromptBolt",
   "version": "1.0.0",
-  "description": "Save reusable text prompts and paste them anywhere with a keyboard shortcut. Built for speed — search, fill variables like [Name], and insert into Gmail, ChatGPT, LinkedIn, and more.",
+  "description": "Command palette for saved prompts — paste into ChatGPT, Gemini, Gmail, LinkedIn, and anywhere you type. ⌘⇧K / Ctrl+Shift+K.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -26,7 +26,8 @@
     {
       "matches": ["<all_urls>"],
       "js": ["src/content.js"],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": true
     }
   ],
   "web_accessible_resources": [
