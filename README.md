@@ -156,8 +156,8 @@ npm run icons
 
 **Zareef Zaman**
 
-- GitHub: [github.com/zareefzaman](https://github.com/zareefzaman)  
-- LinkedIn: [linkedin.com/in/zareefzaman](https://www.linkedin.com/in/zareefzaman)
+- GitHub: [github.com/zareefzaman]([https://github.com/zareefzaman](https://github.com/Zareef09))  
+- LinkedIn: [linkedin.com/in/zareefzaman]([https://www.linkedin.com/in/zareefzaman](https://www.linkedin.com/feed/))
 
 ---
 
