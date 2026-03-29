@@ -38,7 +38,7 @@ import {
   isPromptBoltBackupV1,
   PROMPTBOLT_BACKUP_VERSION,
 } from '@storage/backupFormat'
-import { getStarterPackFolders } from './data/starterPack'
+import { getStarterPackFolders } from '@data/starterPack'
 import {
   parseSiteBlacklist,
   persistSiteBlacklist,

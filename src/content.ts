@@ -10,18 +10,18 @@
  *
  * @module content
  */
-import { initCommandPalette } from './command-palette/commandPalette'
+import { initCommandPalette } from '@command-palette/commandPalette'
 import {
   folderMatchesSiteContext,
   pinRowsForSiteContext,
-} from './command-palette/domainContext'
-import { getFilteredPrompts } from './command-palette/paletteSearch'
+} from '@command-palette/domainContext'
+import { getFilteredPrompts } from '@command-palette/paletteSearch'
 import {
   renderPaletteSearchShell,
   renderPaletteVariableShell,
   buildVariableFieldsFragment,
-} from './command-palette/paletteRender'
-import { injectWithAnalytics } from './command-palette/paletteInjection'
+} from '@command-palette/paletteRender'
+import { injectWithAnalytics } from '@command-palette/paletteInjection'
 
 export { getFilteredPrompts }
 export {

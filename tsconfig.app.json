@@ -12,7 +12,9 @@
       "@components/*": ["src/components/*"],
       "@services/*": ["src/services/*"],
       "@storage/*": ["src/storage/*"],
-      "@bolt-types/*": ["src/types/*"]
+      "@bolt-types/*": ["src/types/*"],
+      "@data/*": ["src/data/*"],
+      "@command-palette/*": ["src/command-palette/*"]
     },
 
     /* Bundler mode */

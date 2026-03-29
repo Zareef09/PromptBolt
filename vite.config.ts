@@ -2,7 +2,7 @@
  * @fileoverview Vite build for the popup (`index.html`), MV3 service worker, and content script.
  * Output paths must stay aligned with `public/manifest.json`.
  *
- * Path aliases: `@components`, `@services`, `@storage`, `@bolt-types` → `src/*`.
+ * Path aliases → project `src/` (see `tsconfig.json` / `tsconfig.app.json`).
  */
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -19,6 +19,8 @@ export default defineConfig({
       '@services': resolve(rootDir, 'src/services'),
       '@storage': resolve(rootDir, 'src/storage'),
       '@bolt-types': resolve(rootDir, 'src/types'),
+      '@data': resolve(rootDir, 'src/data'),
+      '@command-palette': resolve(rootDir, 'src/command-palette'),
     },
   },
   build: {
