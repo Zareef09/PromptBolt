@@ -1,16 +1,19 @@
 /**
- * Variable placeholders use square brackets: `[Name]`, `[Company]`, `[Date]`.
- *
- * Interview note: we scan with a global regex and de-duplicate while preserving
- * first-seen order so the Variable Form matches reading order in the template.
+ * @fileoverview Square-bracket placeholder parsing for prompt templates.
+ * Used by the command palette variable form before calling {@link injectTextIntoEditableTarget}.
  */
 
-/** Inner capture group is the label between brackets; disallow raw newlines inside a token. */
+/**
+ * Matches one placeholder token: `[Label]` where `Label` cannot contain `]` or newlines.
+ * @example `[Name]`, `[Company]`
+ */
 export const PLACEHOLDER_REGEX = /\[([^\]\r\n]+)\]/g
 
 /**
- * Returns unique placeholder *labels* (trimmed) in left-to-right order of first appearance.
- * Example: `"Hi [Name] from [Company], [Name]"` → `['Name', 'Company']`
+ * Scans `template` for `[Label]` tokens and returns each unique label in first-seen order.
+ *
+ * @param template - Raw prompt body, possibly containing repeated placeholders.
+ * @returns Ordered unique labels, e.g. `['Name','Company']` for `"Hi [Name] at [Company]"`.
  */
 export function extractUniquePlaceholders(template: string): string[] {
   PLACEHOLDER_REGEX.lastIndex = 0
@@ -26,7 +29,11 @@ export function extractUniquePlaceholders(template: string): string[] {
 }
 
 /**
- * Replaces every `[Label]` with `values[Label]`. Unknown labels stay as-is in brackets.
+ * Substitutes each `[Label]` with `values[Label]`. Missing keys leave the bracket token unchanged.
+ *
+ * @param template - Original prompt with placeholders.
+ * @param values - Map of label → replacement string (often from the variable form).
+ * @returns Fully expanded string ready for injection.
  */
 export function applyPlaceholderReplacements(
   template: string,

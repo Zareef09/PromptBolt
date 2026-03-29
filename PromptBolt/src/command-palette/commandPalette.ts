@@ -1,324 +1,345 @@
 import { applyPlaceholderReplacements, extractUniquePlaceholders } from './parseVariables'
+import { captureTargetElement, restoreTargetFocus } from './injectText'
 import {
-  captureTargetElement,
-  injectTextIntoEditableTarget,
-  restoreTargetFocus,
-} from './injectText'
-import { escapeHtml } from './htmlUtils'
-import type { PaletteMode, Prompt } from './types'
-import { PROMPTS_STORAGE_KEY } from './types'
+  escapeHtml,
+  wrapBracketPlaceholdersForPreview,
+} from './htmlUtils'
+import { showPromptBoltToast } from './toast'
+import type { Folder, PaletteMode, PaletteRow, Prompt } from './types'
+import { loadFolderStateForPalette } from './paletteFolderLoader'
+import { getFilteredPrompts } from './paletteSearch'
+import { injectWithAnalytics } from './paletteInjection'
+import { pinRowsForSiteContext } from './domainContext'
+import {
+  buildVariableFieldsFragment,
+  renderPaletteSearchShell,
+  renderPaletteVariableShell,
+} from './paletteRender'
+
+/**
+ * Inlined from `storage/lastUsedMap.ts` so the content script stays one bundle
+ * (shared module otherwise emits a separate chunk).
+ */
+const PROMPT_LAST_USED_KEY = 'promptbolt_last_used' as const
+
+/** Inlined (same key as `storage/siteBlacklist.ts`) — avoids a shared chunk. */
+const SITE_BLACKLIST_KEY = 'promptbolt_site_blacklist' as const
+
+function parseLastUsedMap(raw: unknown): Record<string, number> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const out: Record<string, number> = {}
+  for (const [k, v] of Object.entries(raw)) {
+    if (typeof v === 'number' && Number.isFinite(v)) out[k] = v
+  }
+  return out
+}
+
+function persistLastUsedMap(map: Record<string, number>): void {
+  chrome.storage.local.set({ [PROMPT_LAST_USED_KEY]: map })
+}
+
+function parseSiteBlacklistRaw(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw.filter(
+    (x): x is string => typeof x === 'string' && x.trim().length > 0,
+  )
+}
+
+/** Cached rules refreshed from storage (and `onChanged`). */
+let siteBlacklistRules: string[] = []
+
+function refreshSiteBlacklistFromStorage(): void {
+  chrome.storage.local.get([SITE_BLACKLIST_KEY], (res) => {
+    const err = chrome.runtime.lastError
+    if (err) return
+    siteBlacklistRules = parseSiteBlacklistRaw(res[SITE_BLACKLIST_KEY])
+  })
+}
+
+/**
+ * @param hostname - `location.hostname`
+ */
+function isHostnameBlacklisted(hostname: string): boolean {
+  const host = hostname.replace(/^www\./, '').toLowerCase()
+  for (let rule of siteBlacklistRules) {
+    rule =
+      rule
+        .trim()
+        .toLowerCase()
+        .replace(/^https?:\/\//, '')
+        .split('/')[0] ?? ''
+    if (!rule) continue
+    if (rule.startsWith('*.')) {
+      const suff = rule.slice(2)
+      if (host === suff || host.endsWith(`.${suff}`)) return true
+      continue
+    }
+    if (host === rule) return true
+  }
+  return false
+}
 
 const HOST_ID = 'promptbolt-palette-host'
+const ALL_FOLDERS_VALUE = '__all__'
 
 let host: HTMLDivElement | null = null
 let shadow: ShadowRoot | null = null
 let isOpen = false
+/** Prevents double teardown while exit animation runs. */
+let isClosing = false
 
-let allPrompts: Prompt[] = []
-let filtered: Prompt[] = []
+let allFolders: Folder[] = []
+let allRows: PaletteRow[] = []
+let filteredRows: PaletteRow[] = []
+let folderFilterId = ALL_FOLDERS_VALUE
 let filterText = ''
 let selectedIndex = 0
 let mode: PaletteMode = 'search'
 let pendingPrompt: Prompt | null = null
 let pendingPlaceholders: string[] = []
+let promptsLoading = false
+let lastUsedMap: Record<string, number> = {}
 
-function fetchPrompts(): Promise<Prompt[]> {
-  return new Promise((resolve) => {
-    chrome.storage.local.get([PROMPTS_STORAGE_KEY], (res) => {
-      const list = res[PROMPTS_STORAGE_KEY]
-      resolve(Array.isArray(list) ? (list as Prompt[]) : [])
+/**
+ * Rebuilds the flat palette row list from the current folder tree.
+ */
+function rebuildRowsFromFolders(): void {
+  const rows: PaletteRow[] = []
+  for (const f of allFolders) {
+    for (const p of f.prompts) {
+      rows.push({ folderId: f.id, folderName: f.name, prompt: p })
+    }
+  }
+  allRows = rows
+}
+
+/**
+ * Reads `promptbolt_last_used` into {@link lastUsedMap}.
+ *
+ * @returns Resolves when storage read completes
+ */
+function loadLastUsedFromStorage(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.get([PROMPT_LAST_USED_KEY], (res) => {
+      const err = chrome.runtime.lastError
+      if (err) {
+        reject(new Error(err.message))
+        return
+      }
+      lastUsedMap = parseLastUsedMap(res[PROMPT_LAST_USED_KEY])
+      resolve()
     })
   })
 }
 
-function spotlightStyles(): string {
-  return `
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&family=Syne:wght@600;700;800&display=swap');
-
-    * { box-sizing: border-box; }
-    :host { all: initial; }
-    .backdrop {
-      position: fixed;
-      inset: 0;
-      z-index: 2147483646;
-      display: flex;
-      align-items: flex-start;
-      justify-content: center;
-      padding: 12vh 16px;
-      font-family: 'Outfit', ui-sans-serif, system-ui, sans-serif;
-      background: rgba(5, 5, 6, 0.62);
-      backdrop-filter: saturate(1.75) blur(20px);
-      -webkit-backdrop-filter: saturate(1.75) blur(20px);
-    }
-    .panel {
-      width: min(560px, 100%);
-      max-height: min(72vh, 620px);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      border-radius: 16px;
-      background: rgba(12, 12, 14, 0.92);
-      border: 1px solid rgba(232, 121, 249, 0.22);
-      box-shadow:
-        0 0 0 1px rgba(34, 211, 238, 0.08) inset,
-        0 0 48px -12px rgba(232, 121, 249, 0.35),
-        0 24px 80px rgba(0, 0, 0, 0.65);
-      color: #f4f4f5;
-    }
-    .panel-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 12px 16px 0;
-      font-size: 10px;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      font-weight: 700;
-      font-family: 'Syne', 'Outfit', sans-serif;
-      color: rgba(244, 244, 245, 0.45);
-    }
-    .panel-header strong {
-      background: linear-gradient(90deg, #f472b6, #a78bfa, #22d3ee);
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-      font-weight: 800;
-    }
-    .hint {
-      margin-left: auto;
-      font-variant-numeric: tabular-nums;
-      letter-spacing: 0.08em;
-      color: rgba(190, 242, 100, 0.75);
-    }
-    .search-wrap {
-      padding: 12px 16px 8px;
-    }
-    .search {
-      width: 100%;
-      border-radius: 12px;
-      border: 1px solid rgba(63, 63, 70, 0.9);
-      background: rgba(0, 0, 0, 0.45);
-      color: #fafafa;
-      font-size: 15px;
-      line-height: 1.35;
-      padding: 12px 14px;
-      outline: none;
-      transition: box-shadow 0.15s ease, border-color 0.15s ease;
-    }
-    .search::placeholder {
-      color: rgba(161, 161, 170, 0.65);
-    }
-    .search:focus {
-      border-color: rgba(232, 121, 249, 0.55);
-      box-shadow:
-        0 0 0 2px rgba(232, 121, 249, 0.28),
-        0 0 28px -6px rgba(34, 211, 238, 0.25);
-    }
-    .list {
-      flex: 1;
-      overflow: auto;
-      padding: 6px 10px 14px;
-    }
-    .item {
-      width: 100%;
-      text-align: left;
-      border: 0;
-      cursor: pointer;
-      font: inherit;
-      color: inherit;
-      border-radius: 12px;
-      padding: 11px 13px;
-      margin-bottom: 6px;
-      background: rgba(24, 24, 27, 0.65);
-      border: 1px solid rgba(39, 39, 42, 0.95);
-      transition: background 0.12s ease, border-color 0.12s ease, transform 0.06s ease,
-        box-shadow 0.12s ease;
-    }
-    .item:hover {
-      border-color: rgba(232, 121, 249, 0.25);
-      background: rgba(39, 39, 42, 0.55);
-    }
-    .item--selected {
-      background: rgba(232, 121, 249, 0.12);
-      border-color: rgba(167, 139, 250, 0.55);
-      box-shadow: 0 0 24px -8px rgba(232, 121, 249, 0.45);
-    }
-    .item-title {
-      font-family: 'Syne', 'Outfit', sans-serif;
-      font-size: 14px;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      margin-bottom: 4px;
-      color: #fafafa;
-    }
-    .item-preview {
-      font-size: 12px;
-      line-height: 1.4;
-      color: rgba(161, 161, 170, 0.95);
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-    }
-    .empty {
-      padding: 28px 16px;
-      text-align: center;
-      font-size: 13px;
-      line-height: 1.5;
-      color: rgba(161, 161, 170, 0.8);
-    }
-    .var-panel {
-      padding: 16px 16px 18px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      max-height: min(62vh, 520px);
-      overflow: auto;
-    }
-    .var-title {
-      font-size: 13px;
-      font-weight: 600;
-      color: rgba(250, 250, 250, 0.95);
-    }
-    .var-hint {
-      font-size: 11px;
-      line-height: 1.45;
-      color: rgba(244, 114, 182, 0.85);
-    }
-    .field {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .field label {
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: rgba(190, 242, 100, 0.85);
-    }
-    .field input {
-      border-radius: 12px;
-      border: 1px solid rgba(63, 63, 70, 0.95);
-      background: rgba(0, 0, 0, 0.4);
-      color: #fafafa;
-      font-size: 14px;
-      padding: 11px 12px;
-      outline: none;
-      transition: border-color 0.15s ease, box-shadow 0.15s ease;
-    }
-    .field input:focus {
-      border-color: rgba(34, 211, 238, 0.5);
-      box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.18);
-    }
-    .actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 10px;
-      margin-top: 8px;
-    }
-    .btn {
-      border-radius: 12px;
-      padding: 10px 16px;
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      font-family: 'Syne', 'Outfit', sans-serif;
-      cursor: pointer;
-      border: 1px solid rgba(63, 63, 70, 0.95);
-      background: rgba(24, 24, 27, 0.8);
-      color: rgba(244, 244, 245, 0.9);
-      transition: border-color 0.12s ease, background 0.12s ease;
-    }
-    .btn:hover {
-      border-color: rgba(244, 114, 182, 0.45);
-      background: rgba(39, 39, 42, 0.9);
-    }
-    .btn--primary {
-      border: 1px solid rgba(232, 121, 249, 0.45);
-      background: linear-gradient(135deg, #c026d3 0%, #7c3aed 50%, #0891b2 100%);
-      color: #fff;
-      box-shadow: 0 8px 32px rgba(192, 38, 211, 0.35);
-    }
-    .btn--primary:hover {
-      filter: brightness(1.08);
-    }
-  `
+/**
+ * Loads folders + last-used timestamps; updates globals on success.
+ */
+async function fetchPaletteDataSafe(): Promise<void> {
+  try {
+    const { folders } = await loadFolderStateForPalette()
+    allFolders = folders
+    rebuildRowsFromFolders()
+    await loadLastUsedFromStorage()
+  } catch (e) {
+    const msg =
+      e instanceof Error ? e.message : 'Could not read prompts from storage.'
+    console.warn('[PromptBolt] Storage read failed:', msg)
+    showPromptBoltToast(
+      'Could not load prompts. Check extension permissions and try again.',
+      'error',
+    )
+    allFolders = []
+    allRows = []
+  }
 }
 
-function closePalette(): void {
+/**
+ * Syncs the folder `<select>` options with {@link allFolders}.
+ */
+function syncFolderFilterSelectOptions(): void {
+  const sel = shadow?.querySelector<HTMLSelectElement>('[data-folder-filter]')
+  if (!sel) return
+  const current = sel.value
+  sel.innerHTML = `<option value="${ALL_FOLDERS_VALUE}">All folders</option>`
+  for (const f of allFolders) {
+    const opt = document.createElement('option')
+    opt.value = f.id
+    opt.textContent = f.name
+    sel.appendChild(opt)
+  }
+  if (
+    current === ALL_FOLDERS_VALUE ||
+    allFolders.some((f) => f.id === current)
+  ) {
+    sel.value = current
+  } else {
+    sel.value = ALL_FOLDERS_VALUE
+    folderFilterId = ALL_FOLDERS_VALUE
+  }
+}
+
+/**
+ * @param error - User-visible error string
+ */
+function reportInjectionFailure(error: string): void {
+  console.warn('[PromptBolt] Injection failed:', error)
+  showPromptBoltToast(error, 'error')
+}
+
+/**
+ * Enables/disables search + folder controls while prompts load.
+ */
+function updateSearchInteraction(): void {
+  const si = shadow?.querySelector<HTMLInputElement>('[data-search]')
+  const fs = shadow?.querySelector<HTMLSelectElement>('[data-folder-filter]')
+  if (si) {
+    si.disabled = promptsLoading
+    si.classList.toggle('search--loading', promptsLoading)
+    si.setAttribute('aria-busy', promptsLoading ? 'true' : 'false')
+  }
+  if (fs) {
+    fs.disabled = promptsLoading
+  }
+}
+
+/**
+ * Adds entrance animation class to the backdrop after the first paint.
+ */
+function revealBackdrop(): void {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      shadow?.querySelector('[data-backdrop]')?.classList.add('backdrop--visible')
+    })
+  })
+}
+
+/**
+ * Updates {@link lastUsedMap} for a prompt and persists it.
+ *
+ * @param promptId - Prompt id
+ */
+function touchPromptLastUsed(promptId: string): void {
+  lastUsedMap = { ...lastUsedMap, [promptId]: Date.now() }
+  persistLastUsedMap(lastUsedMap)
+}
+
+/**
+ * Removes DOM, listeners, and restores focus to the page field captured at open.
+ */
+function finishPaletteTeardown(): void {
   isOpen = false
   mode = 'search'
   pendingPrompt = null
   pendingPlaceholders = []
+  promptsLoading = false
   filterText = ''
   selectedIndex = 0
-  filtered = []
+  filteredRows = []
+  folderFilterId = ALL_FOLDERS_VALUE
   document.removeEventListener('keydown', onDocumentKeydownCapture, true)
-  host?.remove()
+  try {
+    host?.remove()
+  } catch {
+    /* ignore */
+  }
   host = null
   shadow = null
+  isClosing = false
   restoreTargetFocus()
 }
 
-function applyFilter(): void {
-  const q = filterText.trim().toLowerCase()
-  filtered = q
-    ? allPrompts.filter(
-        (p) =>
-          p.title.toLowerCase().includes(q) ||
-          p.content.toLowerCase().includes(q),
-      )
-    : [...allPrompts]
-  selectedIndex = Math.min(
-    selectedIndex,
-    Math.max(0, filtered.length - 1),
-  )
-  if (filtered.length && selectedIndex < 0) selectedIndex = 0
+/**
+ * Closes the palette with an exit transition when possible.
+ */
+function closePalette(): void {
+  if (!isOpen || isClosing) return
+  const backdrop = shadow?.querySelector('[data-backdrop]')
+  if (backdrop && host) {
+    isClosing = true
+    backdrop.classList.remove('backdrop--visible')
+    backdrop.classList.add('backdrop--leaving')
+    let finished = false
+    const done = (): void => {
+      if (finished) return
+      finished = true
+      finishPaletteTeardown()
+    }
+    const fallback = window.setTimeout(done, 340)
+    backdrop.addEventListener(
+      'transitionend',
+      (ev: Event) => {
+        const te = ev as TransitionEvent
+        if (te.propertyName === 'opacity') {
+          window.clearTimeout(fallback)
+          done()
+        }
+      },
+      { once: true },
+    )
+  } else {
+    finishPaletteTeardown()
+  }
 }
 
+/**
+ * Recomputes {@link filteredRows} from current filters and fuzzy + recency ranking.
+ */
+function applyFilter(): void {
+  const ranked = getFilteredPrompts({
+    allRows,
+    folderFilterId,
+    allFoldersValue: ALL_FOLDERS_VALUE,
+    filterText,
+    lastUsedMap,
+  })
+  const host =
+    typeof window !== 'undefined' && window.location?.hostname
+      ? window.location.hostname
+      : ''
+  filteredRows = pinRowsForSiteContext(ranked, host)
+  selectedIndex = Math.min(
+    selectedIndex,
+    Math.max(0, filteredRows.length - 1),
+  )
+  if (filteredRows.length && selectedIndex < 0) selectedIndex = 0
+}
+
+/**
+ * Injects search-mode markup and wires folder + search listeners.
+ */
 function mountSearchMode(): void {
   if (!shadow) return
   mode = 'search'
   pendingPrompt = null
   pendingPlaceholders = []
 
-  shadow.innerHTML = `
-    <style>${spotlightStyles()}</style>
-    <div class="backdrop" data-backdrop>
-      <div class="panel" data-panel>
-        <div class="panel-header">
-          <strong>Bolt</strong>
-          <span>palette</span>
-          <span class="hint">↵ send it · ↑↓ vibe check · esc bounce</span>
-        </div>
-        <div class="search-wrap">
-          <input
-            class="search"
-            type="search"
-            data-search
-            placeholder="Search your stash…"
-            spellcheck="false"
-            autocomplete="off"
-          />
-        </div>
-        <div class="list" data-list></div>
-      </div>
-    </div>
-  `
+  shadow.innerHTML = renderPaletteSearchShell()
+
+  const folderSelect = shadow.querySelector<HTMLSelectElement>(
+    '[data-folder-filter]',
+  )
+  if (folderSelect) {
+    folderSelect.disabled = promptsLoading
+    syncFolderFilterSelectOptions()
+    folderSelect.addEventListener('change', () => {
+      if (promptsLoading) return
+      folderFilterId = folderSelect.value
+      selectedIndex = 0
+      applyFilter()
+      paintList()
+    })
+  }
 
   const searchInput = shadow.querySelector<HTMLInputElement>('[data-search]')
   if (searchInput) {
     searchInput.value = filterText
     searchInput.addEventListener('input', () => {
+      if (promptsLoading) return
       filterText = searchInput.value
       selectedIndex = 0
-      void fetchPrompts().then((p) => {
-        allPrompts = p
-        applyFilter()
-        paintList()
-      })
+      applyFilter()
+      paintList()
     })
   }
 
@@ -327,36 +348,47 @@ function mountSearchMode(): void {
     if (e.target === backdrop) closePalette()
   })
 
-  applyFilter()
-  paintList()
-
-  requestAnimationFrame(() => {
-    searchInput?.focus()
-    searchInput?.select()
-  })
+  revealBackdrop()
 }
 
+/**
+ * Renders the prompt list (or empty states) inside the shadow root.
+ */
 function paintList(): void {
   if (!shadow || mode !== 'search') return
   const listEl = shadow.querySelector('[data-list]')
   if (!listEl) return
 
-  if (filtered.length === 0) {
-    listEl.innerHTML =
-      '<div class="empty">No matching prompts. Try a different search.</div>'
+  if (promptsLoading) {
+    listEl.innerHTML = '<div class="empty">Loading prompts…</div>'
     return
   }
 
-  listEl.innerHTML = filtered
+  if (allRows.length === 0) {
+    listEl.innerHTML =
+      '<div class="empty">No prompts yet. Add prompts in the PromptBolt popup.</div>'
+    return
+  }
+
+  if (filteredRows.length === 0) {
+    listEl.innerHTML =
+      '<div class="empty">No prompts match this filter. Try another folder or fuzzy search.</div>'
+    return
+  }
+
+  listEl.innerHTML = filteredRows
     .map(
-      (p, i) => `
+      (row, i) => `
       <button
         type="button"
         class="item${i === selectedIndex ? ' item--selected' : ''}"
         data-item-index="${i}"
       >
-        <div class="item-title">${escapeHtml(p.title)}</div>
-        <div class="item-preview">${escapeHtml(p.content)}</div>
+        <div class="item-meta">
+          <span class="folder-badge" title="${escapeHtml(row.folderName)}">${escapeHtml(row.folderName)}</span>
+        </div>
+        <div class="item-title">${escapeHtml(row.prompt.title)}</div>
+        <div class="item-preview">${wrapBracketPlaceholdersForPreview(escapeHtml(row.prompt.content))}</div>
       </button>
     `,
     )
@@ -376,18 +408,94 @@ function paintList(): void {
 
   const active = listEl.querySelector(`[data-item-index="${selectedIndex}"]`)
   active?.scrollIntoView({ block: 'nearest' })
+  updatePreviewPane()
 }
 
+const INJECT_CHECK_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7" /></svg>`
+
+/**
+ * Brief glass success overlay inside the shadow root before teardown.
+ *
+ * @param onComplete - Called after the glow/check animation (e.g. {@link closePalette})
+ */
+function flashInjectionSuccess(onComplete: () => void): void {
+  if (!shadow) {
+    onComplete()
+    return
+  }
+  const panel = shadow.querySelector('[data-panel]')
+  const mount = panel ?? shadow
+  const flash = document.createElement('div')
+  flash.className = 'inject-flash'
+  flash.setAttribute('role', 'presentation')
+  flash.innerHTML = `
+    <div class="inject-flash__inner">
+      <div class="inject-flash__check">${INJECT_CHECK_SVG}</div>
+      <span class="inject-flash__label">Inserted</span>
+    </div>
+  `
+  mount.appendChild(flash)
+  requestAnimationFrame(() => {
+    flash.classList.add('inject-flash--on')
+  })
+  window.setTimeout(() => {
+    flash.classList.remove('inject-flash--on')
+    window.setTimeout(() => {
+      flash.remove()
+      onComplete()
+    }, 280)
+  }, 520)
+}
+
+/**
+ * Updates the right-hand preview column for the highlighted row.
+ */
+function updatePreviewPane(): void {
+  if (!shadow || mode !== 'search') return
+  const body = shadow.querySelector('[data-preview]')
+  const titleEl = shadow.querySelector('[data-preview-title]')
+  if (!body || !titleEl) return
+
+  if (promptsLoading || allRows.length === 0 || filteredRows.length === 0) {
+    titleEl.textContent = '—'
+    body.innerHTML =
+      '<span class="preview-empty">No preview available.</span>'
+    return
+  }
+
+  const row = filteredRows[selectedIndex]
+  if (!row) {
+    titleEl.textContent = '—'
+    body.innerHTML =
+      '<span class="preview-empty">Select a prompt to preview full text.</span>'
+    return
+  }
+
+  titleEl.textContent = row.prompt.title
+  body.innerHTML = wrapBracketPlaceholdersForPreview(
+    escapeHtml(row.prompt.content),
+  )
+}
+
+/**
+ * Moves the selection highlight by `delta` (wraps).
+ *
+ * @param delta - +1 or -1
+ */
 function moveSelection(delta: number): void {
-  if (!filtered.length) return
+  if (!filteredRows.length) return
   selectedIndex =
-    (selectedIndex + delta + filtered.length) % filtered.length
+    (selectedIndex + delta + filteredRows.length) % filteredRows.length
   paintList()
 }
 
+/**
+ * Confirms the highlighted row: variables UI or direct injection.
+ */
 function confirmSelectedPrompt(): void {
-  const p = filtered[selectedIndex]
-  if (!p) return
+  const row = filteredRows[selectedIndex]
+  if (!row) return
+  const p = row.prompt
 
   const keys = extractUniquePlaceholders(p.content)
   if (keys.length > 0) {
@@ -395,52 +503,30 @@ function confirmSelectedPrompt(): void {
     return
   }
 
-  injectTextIntoEditableTarget(p.content)
-  closePalette()
+  const result = injectWithAnalytics(p.content)
+  if (!result.ok) {
+    reportInjectionFailure(result.error)
+    closePalette()
+    return
+  }
+  touchPromptLastUsed(p.id)
+  flashInjectionSuccess(() => closePalette())
 }
 
+/**
+ * Shows the variable substitution form for a prompt.
+ *
+ * @param prompt - Prompt to insert after substitution
+ * @param placeholderLabels - Unique `[label]` names
+ */
 function mountVariableMode(prompt: Prompt, placeholderLabels: string[]): void {
   if (!shadow) return
   pendingPrompt = prompt
   pendingPlaceholders = placeholderLabels
   mode = 'variables'
 
-  const fieldsHtml = placeholderLabels
-    .map(
-      (label, idx) => `
-      <div class="field">
-        <label for="var-${idx}">${escapeHtml(label)}</label>
-        <input
-          id="var-${idx}"
-          type="text"
-          data-var-index="${idx}"
-          placeholder="Value for [${escapeHtml(label)}]"
-        />
-      </div>
-    `,
-    )
-    .join('')
-
-  shadow.innerHTML = `
-    <style>${spotlightStyles()}</style>
-    <div class="backdrop" data-backdrop>
-      <div class="panel" data-panel>
-        <div class="panel-header">
-          <strong>Variables</strong>
-          <span>${escapeHtml(prompt.title)}</span>
-          <span class="hint">esc nah</span>
-        </div>
-        <div class="var-panel">
-          <div class="var-hint">Fill the [brackets] — then we inject the final text fr fr</div>
-          ${fieldsHtml}
-          <div class="actions">
-            <button type="button" class="btn" data-cancel>Nah</button>
-            <button type="button" class="btn btn--primary" data-insert>Send it</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  `
+  const fieldsHtml = buildVariableFieldsFragment(placeholderLabels)
+  shadow.innerHTML = renderPaletteVariableShell(prompt.title, fieldsHtml)
 
   const backdrop = shadow.querySelector('[data-backdrop]')
   backdrop?.addEventListener('click', (e) => {
@@ -448,9 +534,17 @@ function mountVariableMode(prompt: Prompt, placeholderLabels: string[]): void {
   })
 
   shadow.querySelector('[data-cancel]')?.addEventListener('click', () => {
-    void fetchPrompts().then((p) => {
-      allPrompts = p
+    void fetchPaletteDataSafe().then(() => {
       mountSearchMode()
+      syncFolderFilterSelectOptions()
+      applyFilter()
+      paintList()
+      updateSearchInteraction()
+      requestAnimationFrame(() => {
+        const si = shadow?.querySelector<HTMLInputElement>('[data-search]')
+        si?.focus()
+        si?.select()
+      })
     })
   })
 
@@ -467,8 +561,14 @@ function mountVariableMode(prompt: Prompt, placeholderLabels: string[]): void {
       pendingPrompt.content,
       values,
     )
-    injectTextIntoEditableTarget(finalText)
-    closePalette()
+    const result = injectWithAnalytics(finalText)
+    if (!result.ok) {
+      reportInjectionFailure(result.error)
+      closePalette()
+      return
+    }
+    touchPromptLastUsed(pendingPrompt.id)
+    flashInjectionSuccess(() => closePalette())
   }
 
   shadow.querySelector('[data-insert]')?.addEventListener('click', submit)
@@ -492,15 +592,27 @@ function mountVariableMode(prompt: Prompt, placeholderLabels: string[]): void {
   })
 }
 
+/**
+ * @returns The folder filter `<select>` when present
+ */
+function paletteFolderFilterSelect(): HTMLSelectElement | null {
+  return shadow?.querySelector<HTMLSelectElement>('[data-folder-filter]') ?? null
+}
+
+/**
+ * @returns Whether keyboard focus is inside the folder dropdown
+ */
+function isPaletteFolderFilterFocused(): boolean {
+  const sel = paletteFolderFilterSelect()
+  const active = shadow?.activeElement ?? null
+  return Boolean(sel && active === sel)
+}
+
+/**
+ * Capture-phase handler: global navigation while palette is open (search mode).
+ */
 function onDocumentKeydownCapture(e: KeyboardEvent): void {
   if (!isOpen || !shadow) return
-  const rootShadow = shadow
-
-  const pathTargets = typeof e.composedPath === 'function' ? e.composedPath() : []
-  const targetNode = e.target
-  const insidePalette =
-    (targetNode instanceof Node && rootShadow.contains(targetNode)) ||
-    pathTargets.some((n) => n === rootShadow.host)
 
   if (mode === 'variables') {
     if (e.key === 'Escape') {
@@ -511,8 +623,6 @@ function onDocumentKeydownCapture(e: KeyboardEvent): void {
     return
   }
 
-  if (!insidePalette) return
-
   if (e.key === 'Escape') {
     e.preventDefault()
     e.stopPropagation()
@@ -520,35 +630,65 @@ function onDocumentKeydownCapture(e: KeyboardEvent): void {
     return
   }
 
-  if (e.key === 'ArrowDown') {
+  const folderFilterFocused = isPaletteFolderFilterFocused()
+
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    if (folderFilterFocused) return
     e.preventDefault()
     e.stopPropagation()
-    moveSelection(1)
-    return
-  }
-  if (e.key === 'ArrowUp') {
-    e.preventDefault()
-    e.stopPropagation()
-    moveSelection(-1)
+    moveSelection(e.key === 'ArrowDown' ? 1 : -1)
     return
   }
 
-  if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
-    const t = e.target
-    if (t instanceof HTMLInputElement && t.hasAttribute('data-search')) {
-      e.preventDefault()
-      e.stopPropagation()
-      confirmSelectedPrompt()
-    }
+  if (
+    e.key === 'Enter' &&
+    !e.shiftKey &&
+    !e.metaKey &&
+    !e.ctrlKey &&
+    !e.altKey
+  ) {
+    if (folderFilterFocused) return
+    if (filteredRows.length === 0) return
+    e.preventDefault()
+    e.stopPropagation()
+    confirmSelectedPrompt()
+    return
   }
 }
 
+/**
+ * Opens the palette: loads data, mounts shadow DOM, focuses search.
+ *
+ * @returns Promise when initial load and paint complete
+ */
 export async function openCommandPalette(): Promise<void> {
   if (isOpen) return
+
+  if (
+    typeof window !== 'undefined' &&
+    isHostnameBlacklisted(window.location.hostname)
+  ) {
+    showPromptBoltToast('PromptBolt is disabled on this site.', 'info')
+    return
+  }
+
+  try {
+    document.getElementById(HOST_ID)?.remove()
+  } catch {
+    /* ignore */
+  }
+  host = null
+  shadow = null
+  isClosing = false
+
   captureTargetElement()
   isOpen = true
   filterText = ''
   selectedIndex = 0
+  promptsLoading = true
+  folderFilterId = ALL_FOLDERS_VALUE
+  allFolders = []
+  allRows = []
 
   host = document.createElement('div')
   host.id = HOST_ID
@@ -557,34 +697,84 @@ export async function openCommandPalette(): Promise<void> {
 
   document.addEventListener('keydown', onDocumentKeydownCapture, true)
 
-  allPrompts = await fetchPrompts()
   mountSearchMode()
+  paintList()
+  updateSearchInteraction()
+
+  try {
+    await fetchPaletteDataSafe()
+  } finally {
+    promptsLoading = false
+  }
+  syncFolderFilterSelectOptions()
+  applyFilter()
+  paintList()
+  updateSearchInteraction()
+
+  requestAnimationFrame(() => {
+    const si = shadow?.querySelector<HTMLInputElement>('[data-search]')
+    si?.focus()
+    si?.select()
+  })
 }
 
+/**
+ * Toggles palette open/closed (used by ⌘⇧K).
+ */
 export function toggleCommandPalette(): void {
   if (isOpen) {
     closePalette()
     return
   }
-  void openCommandPalette()
+  if (
+    typeof window !== 'undefined' &&
+    isHostnameBlacklisted(window.location.hostname)
+  ) {
+    showPromptBoltToast('PromptBolt is disabled on this site.', 'info')
+    return
+  }
+  void openCommandPalette().catch((err) => {
+    console.warn('[PromptBolt] Failed to open palette', err)
+    showPromptBoltToast('Could not open PromptBolt.', 'error')
+  })
 }
 
+/**
+ * Registers ⌘⇧K (capture phase) and keeps the shortcut handler isolated.
+ */
 export function initCommandPalette(): void {
-  document.addEventListener(
-    'keydown',
-    (e) => {
-      if (
-        e.metaKey &&
-        e.shiftKey &&
-        !e.altKey &&
-        !e.ctrlKey &&
-        (e.key === 'k' || e.key === 'K')
-      ) {
-        e.preventDefault()
-        e.stopPropagation()
-        toggleCommandPalette()
-      }
-    },
-    true,
-  )
+  refreshSiteBlacklistFromStorage()
+  try {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local') return
+      if (changes[SITE_BLACKLIST_KEY]) refreshSiteBlacklistFromStorage()
+    })
+  } catch {
+    /* ignore */
+  }
+  try {
+    document.addEventListener(
+      'keydown',
+      (e) => {
+        try {
+          if (
+            e.metaKey &&
+            e.shiftKey &&
+            !e.altKey &&
+            !e.ctrlKey &&
+            (e.key === 'k' || e.key === 'K')
+          ) {
+            e.preventDefault()
+            e.stopPropagation()
+            toggleCommandPalette()
+          }
+        } catch (err) {
+          console.warn('[PromptBolt] Shortcut handler error', err)
+        }
+      },
+      true,
+    )
+  } catch (e) {
+    console.warn('[PromptBolt] initCommandPalette failed', e)
+  }
 }

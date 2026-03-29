@@ -1,3 +1,8 @@
+/**
+ * Popup: `index.html` → `dist/index.html`.
+ * Extension workers: `src/background.ts` → `dist/src/background.js`,
+ * `src/content.ts` → `dist/src/content.js` (must match `manifest.json`).
+ */
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath, URL } from 'node:url'

@@ -1,20 +1,27 @@
 /**
- * High-compatibility text insertion + lifecycle events for React / Vue / Prose-like editors.
- *
- * Interview notes:
- * - Many SPAs keep state in JS, not the DOM `value`. React often wraps `<input>` with an
- *   internal value tracker; calling the native prototype `value` setter syncs the DOM and tracker
- *   before we emit synthetic events.
- * - We emit `input` → `change` → `blur` with bubbling so both direct and delegated listeners run.
+ * @fileoverview High-compatibility text insertion for extension content scripts.
+ * Handles native inputs, textareas, and contenteditable surfaces used by Gmail,
+ * ChatGPT, LinkedIn, and similar apps, then dispatches bubbling lifecycle events
+ * so React/Vue/Prose-style state layers observe the edit.
  */
 
 /** Element that had focus before the palette opened (may be outside our shadow root). */
 let focusSnapshot: Element | null = null
 
+/**
+ * Remembers `document.activeElement` so we can restore focus after the palette closes.
+ */
 export function captureTargetElement(): void {
-  focusSnapshot = document.activeElement
+  try {
+    focusSnapshot = document.activeElement
+  } catch {
+    focusSnapshot = null
+  }
 }
 
+/**
+ * Focuses the previously captured element on the next frame (after DOM changes settle).
+ */
 export function restoreTargetFocus(): void {
   const el = focusSnapshot
   focusSnapshot = null
@@ -23,11 +30,15 @@ export function restoreTargetFocus(): void {
       try {
         el.focus()
       } catch {
-        /* ignore */
+        /* ignore: restricted or unfocusable */
       }
     }
   })
 }
+
+export type InjectResult =
+  | { ok: true }
+  | { ok: false; error: string }
 
 function getInputValueSetter(
   el: HTMLInputElement | HTMLTextAreaElement,
@@ -40,7 +51,10 @@ function getInputValueSetter(
 }
 
 /**
- * Synthesize editor lifecycle notifications after the DOM has been updated.
+ * Dispatches synthetic `input`, `change`, and `blur` events with bubbling enabled
+ * so delegated listeners and framework bindings (e.g. React) run after DOM updates.
+ *
+ * @param target - Node that received the edit (input, textarea, or contenteditable host)
  */
 export function dispatchEditorLifecycleEvents(target: EventTarget): void {
   target.dispatchEvent(
@@ -127,22 +141,45 @@ function injectIntoContentEditable(host: HTMLElement, text: string): void {
 }
 
 /**
- * Insert `text` into the saved target (preferred) or the current active element.
+ * Inserts plain text into the focused control, preferring the pre-palette focus snapshot.
+ *
+ * @param text - Final string to insert (after any variable substitution).
+ * @returns `{ ok: true }` on success, or `{ ok: false, error }` if the page blocks edits.
  */
-export function injectTextIntoEditableTarget(text: string): void {
-  const preferred =
-    focusSnapshot && focusSnapshot.isConnected ? focusSnapshot : document.activeElement
+export function injectTextIntoEditableTarget(text: string): InjectResult {
+  try {
+    const preferred =
+      focusSnapshot && focusSnapshot.isConnected
+        ? focusSnapshot
+        : document.activeElement
 
-  const el = preferred
-  if (!el) return
+    const el = preferred
+    if (!el) {
+      return { ok: false, error: 'No active field to paste into.' }
+    }
 
-  if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) {
-    if (el.readOnly || el.disabled) return
-    injectIntoField(el, text)
-    return
-  }
+    if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) {
+      if (el.readOnly || el.disabled) {
+        return { ok: false, error: 'That field is read-only or disabled.' }
+      }
+      injectIntoField(el, text)
+      return { ok: true }
+    }
 
-  if (el instanceof HTMLElement && el.isContentEditable) {
-    injectIntoContentEditable(el, text)
+    if (el instanceof HTMLElement && el.isContentEditable) {
+      injectIntoContentEditable(el, text)
+      return { ok: true }
+    }
+
+    return {
+      ok: false,
+      error: 'Focus a text box or editable area, then try again.',
+    }
+  } catch (e) {
+    const msg =
+      e instanceof Error
+        ? e.message
+        : 'Could not insert text on this page (it may be restricted).'
+    return { ok: false, error: msg }
   }
 }

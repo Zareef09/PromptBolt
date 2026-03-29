@@ -1,9 +1,12 @@
-export type Prompt = {
-  id: string
-  title: string
-  content: string
-}
+import type { Prompt } from '../types/prompt'
 
-export const PROMPTS_STORAGE_KEY = 'prompts'
+export type { Prompt, Folder } from '../types/prompt'
 
 export type PaletteMode = 'search' | 'variables'
+
+/** One selectable row in the palette (prompt plus its folder for display/filter). */
+export type PaletteRow = {
+  folderId: string
+  folderName: string
+  prompt: Prompt
+}

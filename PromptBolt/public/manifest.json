@@ -1,13 +1,27 @@
 {
   "manifest_version": 3,
   "name": "PromptBolt",
-  "version": "0.0.0",
-  "description": "Save prompts and insert them on any page.",
+  "version": "1.0.0",
+  "description": "Save reusable text prompts and paste them anywhere with a keyboard shortcut. Built for speed — search, fill variables like [Name], and insert into Gmail, ChatGPT, LinkedIn, and more.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "action": {
     "default_popup": "index.html",
-    "default_title": "PromptBolt"
+    "default_title": "PromptBolt",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
   "permissions": ["storage", "activeTab"],
+  "host_permissions": [
+    "https://generativelanguage.googleapis.com/*",
+    "https://api.openai.com/*"
+  ],
   "background": {
     "service_worker": "src/background.js"
   },
@@ -16,6 +30,12 @@
       "matches": ["<all_urls>"],
       "js": ["src/content.js"],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/*.png"],
+      "matches": ["<all_urls>"]
     }
   ]
 }
