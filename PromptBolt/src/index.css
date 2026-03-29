@@ -2,6 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  margin: 0;
+@layer base {
+  body {
+    margin: 0;
+    @apply bg-bolt-void text-zinc-100 font-sans;
+  }
+}
+
+@layer utilities {
+  .text-gen-gradient {
+    @apply bg-gradient-to-r from-fuchsia-400 via-violet-400 to-cyan-400 bg-clip-text text-transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply rounded-full bg-zinc-900;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-zinc-700 hover:bg-fuchsia-900/80;
+  }
 }

@@ -33,6 +33,8 @@ function fetchPrompts(): Promise<Prompt[]> {
 
 function spotlightStyles(): string {
   return `
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&family=Syne:wght@600;700;800&display=swap');
+
     * { box-sizing: border-box; }
     :host { all: initial; }
     .backdrop {
@@ -43,11 +45,10 @@ function spotlightStyles(): string {
       align-items: flex-start;
       justify-content: center;
       padding: 12vh 16px;
-      font-family: ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Segoe UI",
-        Roboto, sans-serif;
-      background: rgba(0, 0, 0, 0.38);
-      backdrop-filter: saturate(1.6) blur(22px);
-      -webkit-backdrop-filter: saturate(1.6) blur(22px);
+      font-family: 'Outfit', ui-sans-serif, system-ui, sans-serif;
+      background: rgba(5, 5, 6, 0.62);
+      backdrop-filter: saturate(1.75) blur(20px);
+      -webkit-backdrop-filter: saturate(1.75) blur(20px);
     }
     .panel {
       width: min(560px, 100%);
@@ -55,59 +56,68 @@ function spotlightStyles(): string {
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      border-radius: 12px;
-      background: rgba(32, 32, 38, 0.78);
-      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 16px;
+      background: rgba(12, 12, 14, 0.92);
+      border: 1px solid rgba(232, 121, 249, 0.22);
       box-shadow:
-        0 1px 0 rgba(255, 255, 255, 0.06) inset,
-        0 24px 90px rgba(0, 0, 0, 0.55);
-      color: #f5f5f7;
+        0 0 0 1px rgba(34, 211, 238, 0.08) inset,
+        0 0 48px -12px rgba(232, 121, 249, 0.35),
+        0 24px 80px rgba(0, 0, 0, 0.65);
+      color: #f4f4f5;
     }
     .panel-header {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 10px 14px 0;
-      font-size: 11px;
-      letter-spacing: 0.02em;
-      color: rgba(245, 245, 247, 0.55);
+      padding: 12px 16px 0;
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      font-weight: 700;
+      font-family: 'Syne', 'Outfit', sans-serif;
+      color: rgba(244, 244, 245, 0.45);
     }
     .panel-header strong {
-      color: rgba(245, 245, 247, 0.88);
-      font-weight: 600;
+      background: linear-gradient(90deg, #f472b6, #a78bfa, #22d3ee);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      font-weight: 800;
     }
     .hint {
       margin-left: auto;
       font-variant-numeric: tabular-nums;
+      letter-spacing: 0.08em;
+      color: rgba(190, 242, 100, 0.75);
     }
     .search-wrap {
-      padding: 12px 14px 8px;
+      padding: 12px 16px 8px;
     }
     .search {
       width: 100%;
-      border-radius: 10px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      background: rgba(255, 255, 255, 0.06);
-      color: #f5f5f7;
+      border-radius: 12px;
+      border: 1px solid rgba(63, 63, 70, 0.9);
+      background: rgba(0, 0, 0, 0.45);
+      color: #fafafa;
       font-size: 15px;
       line-height: 1.35;
-      padding: 11px 13px;
+      padding: 12px 14px;
       outline: none;
-      transition: box-shadow 0.12s ease, border-color 0.12s ease;
+      transition: box-shadow 0.15s ease, border-color 0.15s ease;
     }
     .search::placeholder {
-      color: rgba(245, 245, 247, 0.35);
+      color: rgba(161, 161, 170, 0.65);
     }
     .search:focus {
-      border-color: rgba(99, 102, 241, 0.55);
+      border-color: rgba(232, 121, 249, 0.55);
       box-shadow:
-        0 0 0 2px rgba(99, 102, 241, 0.38),
-        0 0 0 1px rgba(99, 102, 241, 0.18) inset;
+        0 0 0 2px rgba(232, 121, 249, 0.28),
+        0 0 28px -6px rgba(34, 211, 238, 0.25);
     }
     .list {
       flex: 1;
       overflow: auto;
-      padding: 6px 8px 12px;
+      padding: 6px 10px 14px;
     }
     .item {
       width: 100%;
@@ -116,32 +126,35 @@ function spotlightStyles(): string {
       cursor: pointer;
       font: inherit;
       color: inherit;
-      border-radius: 10px;
-      padding: 10px 12px;
-      margin-bottom: 4px;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid transparent;
-      transition: background 0.1s ease, border-color 0.1s ease, transform 0.05s ease;
+      border-radius: 12px;
+      padding: 11px 13px;
+      margin-bottom: 6px;
+      background: rgba(24, 24, 27, 0.65);
+      border: 1px solid rgba(39, 39, 42, 0.95);
+      transition: background 0.12s ease, border-color 0.12s ease, transform 0.06s ease,
+        box-shadow 0.12s ease;
     }
     .item:hover {
-      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(232, 121, 249, 0.25);
+      background: rgba(39, 39, 42, 0.55);
     }
     .item--selected {
-      background: rgba(99, 102, 241, 0.22);
-      border-color: rgba(129, 140, 248, 0.45);
-      box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.12) inset;
+      background: rgba(232, 121, 249, 0.12);
+      border-color: rgba(167, 139, 250, 0.55);
+      box-shadow: 0 0 24px -8px rgba(232, 121, 249, 0.45);
     }
     .item-title {
+      font-family: 'Syne', 'Outfit', sans-serif;
       font-size: 14px;
-      font-weight: 600;
-      letter-spacing: -0.01em;
+      font-weight: 700;
+      letter-spacing: -0.02em;
       margin-bottom: 4px;
-      color: rgba(245, 245, 247, 0.95);
+      color: #fafafa;
     }
     .item-preview {
       font-size: 12px;
-      line-height: 1.35;
-      color: rgba(245, 245, 247, 0.5);
+      line-height: 1.4;
+      color: rgba(161, 161, 170, 0.95);
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
@@ -151,10 +164,11 @@ function spotlightStyles(): string {
       padding: 28px 16px;
       text-align: center;
       font-size: 13px;
-      color: rgba(245, 245, 247, 0.45);
+      line-height: 1.5;
+      color: rgba(161, 161, 170, 0.8);
     }
     .var-panel {
-      padding: 14px 14px 16px;
+      padding: 16px 16px 18px;
       display: flex;
       flex-direction: column;
       gap: 12px;
@@ -164,11 +178,12 @@ function spotlightStyles(): string {
     .var-title {
       font-size: 13px;
       font-weight: 600;
-      color: rgba(245, 245, 247, 0.9);
+      color: rgba(250, 250, 250, 0.95);
     }
     .var-hint {
       font-size: 11px;
-      color: rgba(245, 245, 247, 0.45);
+      line-height: 1.45;
+      color: rgba(244, 114, 182, 0.85);
     }
     .field {
       display: flex;
@@ -176,50 +191,58 @@ function spotlightStyles(): string {
       gap: 6px;
     }
     .field label {
-      font-size: 11px;
-      color: rgba(245, 245, 247, 0.55);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: rgba(190, 242, 100, 0.85);
     }
     .field input {
-      border-radius: 10px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      background: rgba(255, 255, 255, 0.06);
-      color: #f5f5f7;
+      border-radius: 12px;
+      border: 1px solid rgba(63, 63, 70, 0.95);
+      background: rgba(0, 0, 0, 0.4);
+      color: #fafafa;
       font-size: 14px;
-      padding: 10px 11px;
+      padding: 11px 12px;
       outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
     .field input:focus {
-      border-color: rgba(99, 102, 241, 0.55);
-      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.35);
+      border-color: rgba(34, 211, 238, 0.5);
+      box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.18);
     }
     .actions {
       display: flex;
       justify-content: flex-end;
-      gap: 8px;
-      margin-top: 6px;
+      gap: 10px;
+      margin-top: 8px;
     }
     .btn {
-      border-radius: 10px;
-      padding: 9px 14px;
-      font-size: 13px;
-      font-weight: 600;
+      border-radius: 12px;
+      padding: 10px 16px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      font-family: 'Syne', 'Outfit', sans-serif;
       cursor: pointer;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      background: rgba(255, 255, 255, 0.06);
-      color: rgba(245, 245, 247, 0.9);
+      border: 1px solid rgba(63, 63, 70, 0.95);
+      background: rgba(24, 24, 27, 0.8);
+      color: rgba(244, 244, 245, 0.9);
+      transition: border-color 0.12s ease, background 0.12s ease;
+    }
+    .btn:hover {
+      border-color: rgba(244, 114, 182, 0.45);
+      background: rgba(39, 39, 42, 0.9);
     }
     .btn--primary {
-      border-color: rgba(99, 102, 241, 0.55);
-      background: linear-gradient(
-        180deg,
-        rgba(99, 102, 241, 0.9) 0%,
-        rgba(79, 70, 229, 0.92) 100%
-      );
+      border: 1px solid rgba(232, 121, 249, 0.45);
+      background: linear-gradient(135deg, #c026d3 0%, #7c3aed 50%, #0891b2 100%);
       color: #fff;
-      box-shadow: 0 6px 20px rgba(79, 70, 229, 0.28);
+      box-shadow: 0 8px 32px rgba(192, 38, 211, 0.35);
     }
     .btn--primary:hover {
-      filter: brightness(1.03);
+      filter: brightness(1.08);
     }
   `
 }
@@ -266,16 +289,16 @@ function mountSearchMode(): void {
     <div class="backdrop" data-backdrop>
       <div class="panel" data-panel>
         <div class="panel-header">
-          <strong>PromptBolt</strong>
-          <span>Command palette</span>
-          <span class="hint">↵ insert · ↑↓ navigate · esc close</span>
+          <strong>Bolt</strong>
+          <span>palette</span>
+          <span class="hint">↵ send it · ↑↓ vibe check · esc bounce</span>
         </div>
         <div class="search-wrap">
           <input
             class="search"
             type="search"
             data-search
-            placeholder="Search prompts…"
+            placeholder="Search your stash…"
             spellcheck="false"
             autocomplete="off"
           />
@@ -403,16 +426,16 @@ function mountVariableMode(prompt: Prompt, placeholderLabels: string[]): void {
     <div class="backdrop" data-backdrop>
       <div class="panel" data-panel>
         <div class="panel-header">
-          <strong>Fill variables</strong>
+          <strong>Variables</strong>
           <span>${escapeHtml(prompt.title)}</span>
-          <span class="hint">esc cancel</span>
+          <span class="hint">esc nah</span>
         </div>
         <div class="var-panel">
-          <div class="var-hint">Replace placeholders like [Name] before inserting.</div>
+          <div class="var-hint">Fill the [brackets] — then we inject the final text fr fr</div>
           ${fieldsHtml}
           <div class="actions">
-            <button type="button" class="btn" data-cancel>Cancel</button>
-            <button type="button" class="btn btn--primary" data-insert>Insert</button>
+            <button type="button" class="btn" data-cancel>Nah</button>
+            <button type="button" class="btn btn--primary" data-insert>Send it</button>
           </div>
         </div>
       </div>
