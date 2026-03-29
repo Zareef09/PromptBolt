@@ -1,3 +1,7 @@
+/**
+ * @fileoverview Folder CRUD and migration for `chrome.storage.local` (`folders`, `selectedFolderId`).
+ */
+
 import type { Folder, Prompt } from '../types/prompt'
 import { ensureUncategorizedDefaultFolder } from './defaultFolderMigration'
 

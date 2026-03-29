@@ -1,6 +1,6 @@
 /**
- * @fileoverview Square-bracket placeholder parsing for prompt templates.
- * Used by the command palette variable form before calling {@link injectTextIntoEditableTarget}.
+ * @fileoverview Square-bracket placeholder parsing for prompt templates (palette + injection).
+ * Shared with the command palette variable form and Magic-generated templates.
  */
 
 /**

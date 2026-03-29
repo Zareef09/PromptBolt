@@ -1,3 +1,7 @@
+/**
+ * @fileoverview React error boundary for the extension popup UI.
+ */
+
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 
 type Props = { children: ReactNode }

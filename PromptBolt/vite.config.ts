@@ -1,7 +1,8 @@
 /**
- * Popup: `index.html` → `dist/index.html`.
- * Extension workers: `src/background.ts` → `dist/src/background.js`,
- * `src/content.ts` → `dist/src/content.js` (must match `manifest.json`).
+ * @fileoverview Vite build for the popup (`index.html`), MV3 service worker, and content script.
+ * Output paths must stay aligned with `public/manifest.json`.
+ *
+ * Path aliases: `@components`, `@services`, `@storage`, `@bolt-types` → `src/*`.
  */
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -12,6 +13,14 @@ const rootDir = fileURLToPath(new URL('.', import.meta.url))
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      '@components': resolve(rootDir, 'src/components'),
+      '@services': resolve(rootDir, 'src/services'),
+      '@storage': resolve(rootDir, 'src/storage'),
+      '@bolt-types': resolve(rootDir, 'src/types'),
+    },
+  },
   build: {
     rollupOptions: {
       input: {

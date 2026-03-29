@@ -1,3 +1,7 @@
+/**
+ * @fileoverview Core domain types for saved prompts and folder organization.
+ */
+
 export type Prompt = {
   id: string
   title: string

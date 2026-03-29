@@ -1,3 +1,7 @@
+/**
+ * @fileoverview MV3 service worker: migration on install and future background hooks.
+ */
+
 chrome.runtime.onInstalled.addListener(() => {
   void chrome.storage.local.get(['folders', 'prompts'], (items) => {
     if (items.folders != null) return

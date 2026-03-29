@@ -1,4 +1,7 @@
-import { applyPlaceholderReplacements, extractUniquePlaceholders } from './parseVariables'
+import {
+  applyPlaceholderReplacements,
+  extractUniquePlaceholders,
+} from '@services/parsePlaceholders'
 import { captureTargetElement, restoreTargetFocus } from './injectText'
 import {
   escapeHtml,
