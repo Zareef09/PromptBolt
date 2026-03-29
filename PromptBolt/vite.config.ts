@@ -10,7 +10,7 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        index: resolve(rootDir, 'index.html'),
+        main: resolve(rootDir, 'index.html'),
         background: resolve(rootDir, 'src/background.ts'),
         content: resolve(rootDir, 'src/content.ts'),
       },
