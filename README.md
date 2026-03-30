@@ -16,9 +16,9 @@
 
 ## Project vision
 
-**PromptBolt** is a Chrome extension built for **AI power users** who feel **prompt fatigue**: juggling dozens of saved snippets across notes apps, docs, and chat tabs. It gives you a **Spotlight-inspired command palette** (fuzzy search, keyboard-first) that works **on whatever page you’re on**—Gmail, ChatGPT, Gemini, LinkedIn, or anywhere you can type.
+**PromptBolt** is a Chrome extension built for **AI power users** who feel **prompt fatigue**: juggling dozens of saved snippets across notes apps, docs, and chat tabs. This gives you a **Spotlight-inspired command palette** (fuzzy search, keyboard-first) that works **on whatever page you’re on**—Gmail, ChatGPT, Gemini, LinkedIn, or anywhere you can type.
 
-No context switching. No hunting through folders mid-conversation. One shortcut, your library, instant paste.
+No context switching. No hunting through folders mid-conversation. One shortcut, your library, instant paste and continue working, saving thousands of hours over time.
 
 ---
 
