@@ -140,7 +140,7 @@ This runs TypeScript (`tsc -b`) and Vite. Output is written to **`dist/`**—tha
 1. Open **`chrome://extensions`**
 2. Enable **Developer mode** (top right)
 3. Click **Load unpacked**
-4. Select the **`dist`** directory inside your project (e.g. `…/PromptBolt/dist`)
+4. Select the **`dist`** directory inside the project (e.g. `…/PromptBolt/dist`)
 
 After code changes, run `npm run build` again and use **Reload** on the extension card.
 
