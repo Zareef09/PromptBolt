@@ -144,7 +144,7 @@ This runs TypeScript (`tsc -b`) and Vite. Output is written to **`dist/`**—tha
 
 After code changes, run `npm run build` again and use **Reload** on the extension card.
 
-### Optional: icons
+### icons
 
 ```bash
 npm run icons
